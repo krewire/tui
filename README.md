@@ -54,6 +54,13 @@ func main() {
 }
 ```
 
+## Documentation Index
+
+- [Documentation Hub](docs/index.md) — Overview of the TUI model and terminal engine.
+- [Architecture & Design](docs/architecture.md) — Two-package subsystem design, leaf invariant, and pure-Go contracts.
+- [Getting Started Guide](docs/getting-started.md) — Quickstart tutorial, command hierarchies, and flag binding.
+- [Contributing Guidelines](docs/contributing.md) — Testing standards, quality gates, and code conventions.
+
 ## License
 
 MIT License. See [LICENSE](./LICENSE).
