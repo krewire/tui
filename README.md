@@ -16,6 +16,17 @@ Part of the [Krewire](https://krewire.com) ecosystem.
 go get github.com/krewire/tui
 ```
 
+## Architecture & Boundaries
+
+`tui` adheres to the Krewire 3S (Secure, Sustainable, Scalable) filter and Layer 2 modular design:
+
+- **Root (`github.com/krewire/tui`)**: Unified application model, lifecycle management, sub-command router, flag parsing, progressive disclosure help formatting, and fuzzy suggestions.
+- **Terminal Adapter (`github.com/krewire/tui/term`)**: Pure-Go ANSI color, styling, and terminal capability detection (`NO_COLOR`, `TERM=dumb`). Operates strictly as a leaf package and never imports root `tui`.
+- **Modular Growth Guidelines**:
+  - Keep the root core small and cohesive.
+  - Subsystems with stateful APIs (such as interactive layout or widget engines) should only be split into dedicated packages when they have distinct independent lifecycles.
+  - Avoid vague buckets like `utils` or `common`.
+
 ## Quick Start
 
 ```go
