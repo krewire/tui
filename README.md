@@ -8,7 +8,7 @@ Part of the [Krewire](https://krewire.com) ecosystem.
 
 - **TUI Application Model (`tui`)**: Structured `App`, `Command`, `Flag`, subcommands, core workflow grouping, and progressive disclosure help.
 - **Terminal Primitives (`term`)**: ANSI colors, text styles (bold, dim, underline), terminal capability detection, and output stream routing.
-- **Zero NPM / Pure Go**: Standard library-first design compiling with `CGO_ENABLED=0`.
+- **Pure Go & CGO-Free**: Standard library-first design compiling with `CGO_ENABLED=0`.
 
 ## Installation
 
