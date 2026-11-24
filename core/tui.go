@@ -14,7 +14,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/krewire/krewire/pkg/errs"
+	"github.com/krewire/krewire/errs"
 	"github.com/krewire/tui/term"
 )
 

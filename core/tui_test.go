@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/krewire/krewire/pkg/errs"
+	"github.com/krewire/krewire/errs"
 )
 
 func successHandler(*flag.FlagSet) errs.ExitCode {

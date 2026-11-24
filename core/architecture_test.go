@@ -20,6 +20,9 @@ func TestArchitectureInvariants(t *testing.T) {
 	}
 
 	termDir := filepath.Join(wd, "term")
+	if _, err := os.Stat(termDir); err != nil {
+		termDir = filepath.Join(wd, "..", "term")
+	}
 	termFset := token.NewFileSet()
 	termPkgs, err := parser.ParseDir(termFset, termDir, nil, parser.ImportsOnly)
 	if err != nil {
