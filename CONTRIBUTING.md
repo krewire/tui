@@ -1,25 +1,20 @@
 # Contributing to Krewire TUI
 
-Guidelines and engineering standards for contributors working on `github.com/krewire/tui`.
+Guidelines for contributing to **Krewire TUI** (`github.com/krewire/tui`).
 
-## Invariant Rules
+> All code, comments, docstrings, commit messages, and documentation are strictly in **English**.
 
-1. **Pure Go**: All code must compile with `CGO_ENABLED=0`. Do not introduce CGO dependencies.
-2. **Zero Dependencies**: Do not add third-party dependencies to `go.mod`. Use the Go standard library exclusively.
-3. **Leaf Layering**: The `term` package must remain a leaf package. Never import `github.com/krewire/tui` or higher-level libraries from `term`.
+## Invariants
 
-## Testing Standards
+1. **Standard Library Only**: Never introduce third-party dependencies.
+2. **Pure Go**: Always compile with `CGO_ENABLED=0`.
+3. **Module Structure**: Code lives under `core/` or `term/` modules.
 
-- Write unit tests for all public methods and formatting helpers.
-- Run `architecture_test.go` to ensure layering invariants are preserved.
-
-## Verification Checklist
-
-Before opening a pull request or committing changes:
+## Quality Gates
 
 ```bash
 gofmt -l .
 go vet ./...
-go test -v ./...
+go test ./...
 CGO_ENABLED=0 go build ./...
 ```
