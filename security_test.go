@@ -48,6 +48,23 @@ func TestHelpOutputSanitizesUntrustedMetadata(t *testing.T) {
 			t.Errorf("help output retained control rune U+%04X", r)
 		}
 	}
+
+	// The general help route also renders application descriptions and the
+	// command catalogue, so validate that project metadata cannot hide later
+	// diagnostics or headings.
+	stderr.Reset()
+	if got := app.Run([]string{"help"}); got != errs.ExitCodeSuccess {
+		t.Fatalf("Run(help) = %v, want success", got)
+	}
+	general := stderr.String()
+	for _, forbidden := range []string{"\x1b", "\x07", "\r", "\u009b", "evil.example", "Ym9keQ=="} {
+		if strings.Contains(general, forbidden) {
+			t.Errorf("general help contains forbidden terminal content %q: %q", forbidden, general)
+		}
+	}
+	if !strings.Contains(general, "description visible") || !strings.Contains(general, "USAGE") {
+		t.Errorf("general help lost safe project metadata or subsequent output: %q", general)
+	}
 }
 
 func TestRunParseErrorSanitizesUntrustedFlagValues(t *testing.T) {
