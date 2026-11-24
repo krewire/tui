@@ -99,6 +99,6 @@ jobs:
 
       - name: Run bounded terminal conformance tests
         env:
-          NO_COLOR: "1"
+          NO_COLOR: ""
           TERM: dumb
         run: go test -count=1 -timeout=1m ./term
