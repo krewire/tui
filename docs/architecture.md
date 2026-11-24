@@ -36,6 +36,7 @@ The TUI repository is structured into two focused packages:
 - **Terminal Primitives (`Terminal`)**: ANSI 16-color, 256-color, and TrueColor escape codes.
 - **Style Modifiers**: Bold, Dim, Italic, Underline, and Invert.
 - **Word Wrapping & Layout**: Bounds checking, word wrapping to terminal width, and line truncation.
+- **Terminal Injection Protection (`Sanitize`)**: Untrusted caller text passed to `Paint` is sanitized by default against CSI, OSC, BEL, and C0/C1 control characters. Callers requiring verbatim escape sequences must explicitly invoke `RawPaint`.
 - **Zero-Dependency Leaf Invariant**: Must never import `github.com/krewire/tui` or any package outside the Go standard library.
 
 ## Architectural Invariants

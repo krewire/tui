@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"flag"
 	"strings"
 	"testing"
 
@@ -87,5 +88,56 @@ func TestSuggest(t *testing.T) {
 		if got := Suggest(in, cands); got != want {
 			t.Errorf("Suggest(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestHelpRenderer_SanitizesMaliciousMetadata(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Malicious command metadata attempting to inject OSC 8 hyperlinks,
+	// OSC 52 clipboard commands, CSI cursor line-wipe, and carriage returns
+	maliciousApp := NewApp("app\x1b]8;;https://evil.test\x07name\x1b]8;;\x07", "1.0.0").
+		Command(NewCommand("build", "build project\x1b[2K\r[OK] fake status", func(fs *flag.FlagSet) {
+			fs.String("config", "", "path to config\x1b]52;c;evil\x07 file\roverwrite")
+		}, successHandler).WithExample("build --config\x07 evil.json"))
+	maliciousApp.stderr = &buf
+	maliciousApp.terminal = &term.Terminal{ColorSupported: false}
+
+	// 1. General help
+	code := maliciousApp.Run([]string{"help"})
+	if code != errs.ExitCodeSuccess {
+		t.Fatalf("unexpected exit code: %v", code)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "\x1b]8;;") {
+		t.Errorf("general help output contains unescaped OSC 8 hyperlink: %q", out)
+	}
+	if strings.Contains(out, "\x1b[2K") {
+		t.Errorf("general help output contains unescaped CSI line wipe: %q", out)
+	}
+	if strings.Contains(out, "\x07") {
+		t.Errorf("general help output contains unescaped BEL byte: %q", out)
+	}
+	if strings.Contains(out, "\r") {
+		t.Errorf("general help output contains unescaped isolated carriage return: %q", out)
+	}
+
+	// 2. Command specific help
+	buf.Reset()
+	code = maliciousApp.Run([]string{"build", "--help"})
+	if code != errs.ExitCodeSuccess {
+		t.Fatalf("unexpected exit code: %v", code)
+	}
+
+	cmdOut := buf.String()
+	if strings.Contains(cmdOut, "\x1b]52;") {
+		t.Errorf("command help output contains unescaped OSC 52 clipboard sequence: %q", cmdOut)
+	}
+	if strings.Contains(cmdOut, "\x07") {
+		t.Errorf("command help output contains unescaped BEL byte: %q", cmdOut)
+	}
+	if strings.Contains(cmdOut, "\r") {
+		t.Errorf("command help output contains unescaped isolated carriage return: %q", cmdOut)
 	}
 }

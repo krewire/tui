@@ -241,3 +241,130 @@ func TestPaint_DataStableEmissions(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitize_CSI(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"color reset", "hello \x1b[0mworld", "hello world"},
+		{"color codes", "\x1b[1;31mred bold\x1b[0m", "red bold"},
+		{"clear screen", "\x1b[2Jcleared", "cleared"},
+		{"cursor home", "\x1b[Hat home", "at home"},
+		{"clear line", "\x1b[2Kline wiped", "line wiped"},
+		{"cursor hide", "text\x1b[?25lhidden", "texthidden"},
+		{"multiple csi", "\x1b[1m\x1b[32m\x1b[4mstyled\x1b[0m", "styled"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Sanitize(tc.input); got != tc.want {
+				t.Errorf("Sanitize(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSanitize_OSC(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"hyperlink osc8 bel", "\x1b]8;;https://malicious.example.com\x07Click Here\x1b]8;;\x07", "Click Here"},
+		{"hyperlink osc8 st", "\x1b]8;;https://evil.test\x1b\\Safe Text\x1b]8;;\x1b\\", "Safe Text"},
+		{"clipboard osc52", "prefix\x1b]52;c;cGFzc3dvcmQK\x07suffix", "prefixsuffix"},
+		{"window title osc0", "\x1b]0;Evil Window Title\x07normal text", "normal text"},
+		{"color query osc10", "\x1b]10;?\x07data", "data"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Sanitize(tc.input); got != tc.want {
+				t.Errorf("Sanitize(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSanitize_ControlCharacters(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"audio bell bel", "ring\x07bell", "ringbell"},
+		{"backspace", "one\x08two", "onetwo"},
+		{"null byte", "zero\x00byte", "zerobyte"},
+		{"carriage return isolated", "first line\roverwritten", "first lineoverwritten"},
+		{"crlf normalized to lf", "line 1\r\nline 2", "line 1\nline 2"},
+		{"multiple crlf", "a\r\nb\r\nc\r\n", "a\nb\nc\n"},
+		{"tab and newline preserved", "col1\tcol2\nrow2", "col1\tcol2\nrow2"},
+		{"del char", "delete\x7Fme", "deleteme"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Sanitize(tc.input); got != tc.want {
+				t.Errorf("Sanitize(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSanitize_C1Controls(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"c1 csi", "prefix\u009B31mcolored\u009B0msuffix", "prefixcoloredsuffix"},
+		{"c1 osc", "text\u009D8;;https://evil.test\x07link\u009D8;;\x07", "textlink"},
+		{"c1 dcs", "start\u0090payload\u009Cend", "startend"},
+		{"c1 apc", "start\u009Fpayload\u009Cend", "startend"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Sanitize(tc.input); got != tc.want {
+				t.Errorf("Sanitize(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSanitize_UnicodePreservation(t *testing.T) {
+	input := "Halo Dunia – 日本語 (Japanese) · Türkçe: Ölçer — 🚀 Rocket & ✓ Checkmark"
+	got := Sanitize(input)
+	if got != input {
+		t.Errorf("Sanitize(%q) = %q, want exact preservation", input, got)
+	}
+}
+
+func TestPaint_CannotBeEscapedOrOverridden(t *testing.T) {
+	// Attempt to escape the green paint and turn text red early
+	malicious := "safe \x1b[0m\x1b[31minjected red\x1b[0m"
+	got := Paint(malicious, ColorGreen, nil)
+
+	// Result must be wrapped in green and closing reset, with internal escapes removed
+	want := "\x1b[32msafe injected red\x1b[0m"
+	if got != want {
+		t.Errorf("Paint() = %q, want %q", got, want)
+	}
+}
+
+func TestRawPaint_ExplicitTrustedOnly(t *testing.T) {
+	raw := "\x1b[1;33mexplicit trusted art\x1b[0m"
+	got := RawPaint(raw, ColorDefault, nil)
+	// RawPaint preserves the inner ANSI sequence
+	if !strings.Contains(got, "\x1b[1;33mexplicit trusted art\x1b[0m") {
+		t.Errorf("RawPaint() did not preserve raw text: %q", got)
+	}
+}
+
+func TestTerminalPaint_SanitizesEvenWithoutColor(t *testing.T) {
+	termNoColor := &Terminal{ColorSupported: false}
+	input := "safe\x1b]8;;https://evil.com\x07 \x1b[2Jtext\r\nline2"
+	got := termNoColor.Paint(input, ColorGreen, []Style{StyleBold})
+	want := "safe text\nline2"
+	if got != want {
+		t.Errorf("termNoColor.Paint() = %q, want %q", got, want)
+	}
+}
