@@ -52,6 +52,7 @@ func (a *App) printHelpMode(all bool) {
 		if about == "" {
 			about = dim("—")
 		}
+		about = term.Sanitize(about)
 		about, _, _ = strings.Cut(about, "\n")
 		l := "    " + t.Paint(cmd.Name, term.ColorCyan, nil) + strings.Repeat(" ", maxLen-len(cmd.Name)) + "  " + about
 		if cmd.Example != "" {
@@ -180,7 +181,7 @@ func (a *App) printCommandHelp(cmd *Command) {
 	title := t.Paint(a.name+" "+cmd.Name, term.ColorCyan, []term.Style{term.StyleBold})
 	a.stderr.Write([]byte(title + "\n"))
 	if cmd.About != "" {
-		a.stderr.Write([]byte(cmd.About + "\n"))
+		a.stderr.Write([]byte(term.Sanitize(cmd.About) + "\n"))
 	}
 	if cmd.Example != "" {
 		a.stderr.Write([]byte("\n" + t.Paint("Example:", term.ColorDefault, []term.Style{term.StyleBold, term.StyleDim}) + "\n"))
@@ -195,7 +196,7 @@ func (a *App) printCommandHelp(cmd *Command) {
 	a.stderr.Write([]byte("\n"))
 
 	fs := flag.NewFlagSet(cmd.Name, flag.ContinueOnError)
-	fs.SetOutput(a.stderr)
+	fs.SetOutput(sanitizedTextWriter{dst: a.stderr})
 	if cmd.Register != nil {
 		cmd.Register(fs)
 	}
@@ -215,7 +216,7 @@ func (a *App) printCommandHelp(cmd *Command) {
 				// boolean flag
 				name = t.Paint("--"+f.Name, term.ColorYellow, nil)
 			}
-			a.stderr.Write([]byte(fmt.Sprintf("  %-22s %s%s\n", name, f.Usage, defVal)))
+			a.stderr.Write([]byte(fmt.Sprintf("  %-22s %s%s\n", name, term.Sanitize(f.Usage), defVal)))
 		})
 	} else {
 		a.stderr.Write([]byte(t.Paint("No options.", term.ColorDefault, []term.Style{term.StyleDim}) + "\n"))

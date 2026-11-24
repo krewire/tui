@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Color is an ANSI 16-color palette value.
@@ -45,9 +46,111 @@ const (
 	StyleUnderline Style = 4
 )
 
-// Paint wraps text in ANSI escape sequences for the given color and styles.
-// Use Terminal.Paint instead when the output may not support colors.
+// Sanitize removes terminal control sequences and control characters from
+// untrusted text. It preserves ordinary Unicode, tabs, and newlines. Complete
+// and unterminated ANSI CSI, OSC, DCS, SOS, PM, and APC sequences are removed.
+func Sanitize(text string) string {
+	runes := []rune(text)
+	var clean strings.Builder
+	clean.Grow(len(text))
+
+	for i := 0; i < len(runes); {
+		r := runes[i]
+		switch r {
+		case '\n', '\t':
+			clean.WriteRune(r)
+			i++
+		case '\x1b':
+			i = skipEscapeSequence(runes, i)
+		case '\u009b':
+			i = skipCSI(runes, i+1)
+		case '\u009d':
+			i = skipOSC(runes, i+1)
+		case '\u0090', '\u0098', '\u009e', '\u009f':
+			i = skipStringSequence(runes, i+1)
+		default:
+			if !unicode.IsControl(r) {
+				clean.WriteRune(r)
+			}
+			i++
+		}
+	}
+	return clean.String()
+}
+
+func skipEscapeSequence(runes []rune, start int) int {
+	if start+1 >= len(runes) {
+		return len(runes)
+	}
+
+	switch runes[start+1] {
+	case '[':
+		return skipCSI(runes, start+2)
+	case ']':
+		return skipOSC(runes, start+2)
+	case 'P', 'X', '^', '_':
+		return skipStringSequence(runes, start+2)
+	default:
+		// Three-byte ESC sequences include an intermediate byte (0x20-0x2F)
+		// followed by a final byte (0x30-0x7E).
+		if runes[start+1] >= 0x20 && runes[start+1] <= 0x2f &&
+			start+2 < len(runes) && runes[start+2] >= 0x30 && runes[start+2] <= 0x7e {
+			return start + 3
+		}
+		// Two-byte ESC sequences are discarded.
+		return start + 2
+	}
+}
+
+func skipCSI(runes []rune, start int) int {
+	for i := start; i < len(runes); i++ {
+		// ECMA-48 CSI final bytes occupy 0x40 through 0x7E.
+		if runes[i] >= 0x40 && runes[i] <= 0x7e {
+			return i + 1
+		}
+	}
+	return len(runes)
+}
+
+func skipOSC(runes []rune, start int) int {
+	for i := start; i < len(runes); i++ {
+		switch runes[i] {
+		case '\a', '\u009c', '\x18', '\x1a':
+			return i + 1
+		case '\x1b':
+			if i+1 < len(runes) && runes[i+1] == '\\' {
+				return i + 2
+			}
+		}
+	}
+	return len(runes)
+}
+
+func skipStringSequence(runes []rune, start int) int {
+	for i := start; i < len(runes); i++ {
+		switch runes[i] {
+		case '\u009c', '\x18', '\x1a':
+			return i + 1
+		case '\x1b':
+			if i+1 < len(runes) && runes[i+1] == '\\' {
+				return i + 2
+			}
+		}
+	}
+	return len(runes)
+}
+
+// Paint sanitizes untrusted text and wraps it in ANSI escape sequences for the
+// given color and styles. Use PaintTrustedANSI only for application-controlled
+// payloads that intentionally contain terminal control sequences.
 func Paint(text string, color Color, styles []Style) string {
+	return PaintTrustedANSI(Sanitize(text), color, styles)
+}
+
+// PaintTrustedANSI wraps trusted text in ANSI escape sequences for the given
+// color and styles without sanitizing its payload. Never pass repository,
+// configuration, user, or other untrusted text to this function.
+func PaintTrustedANSI(text string, color Color, styles []Style) string {
 	codes := make([]string, 0, len(styles)+1)
 	for _, s := range styles {
 		codes = append(codes, strconv.Itoa(int(s)))
@@ -131,10 +234,20 @@ func (t *Terminal) DiagWriter() io.Writer {
 	return os.Stderr
 }
 
-// Paint colors text, degrading to plain text when color is unsupported.
+// Paint colors sanitized text, degrading to sanitized plain text when color is unsupported.
 func (t *Terminal) Paint(text string, color Color, styles []Style) string {
+	text = Sanitize(text)
 	if !t.ColorSupported {
 		return text
 	}
-	return Paint(text, color, styles)
+	return PaintTrustedANSI(text, color, styles)
+}
+
+// PaintTrustedANSI emits the supplied trusted ANSI payload only when color is
+// supported. When color is unsupported, embedded control sequences are removed.
+func (t *Terminal) PaintTrustedANSI(text string, color Color, styles []Style) string {
+	if !t.ColorSupported {
+		return Sanitize(text)
+	}
+	return PaintTrustedANSI(text, color, styles)
 }

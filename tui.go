@@ -87,6 +87,27 @@ type App struct {
 	hints       map[string]string
 }
 
+// sanitizedTextWriter removes terminal control sequences from text written to
+// it before forwarding the text to the underlying diagnostics writer.
+type sanitizedTextWriter struct {
+	dst io.Writer
+}
+
+func (w sanitizedTextWriter) Write(p []byte) (int, error) {
+	clean := []byte(term.Sanitize(string(p)))
+	if len(clean) == 0 {
+		return len(p), nil
+	}
+	n, err := w.dst.Write(clean)
+	if err != nil {
+		return 0, err
+	}
+	if n != len(clean) {
+		return 0, io.ErrShortWrite
+	}
+	return len(p), nil
+}
+
 // NewApp creates an App with the given name and version.
 func NewApp(name, version string) *App {
 	return &App{
@@ -190,7 +211,7 @@ func (a *App) Run(tokens []string) errs.ExitCode {
 	}
 
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(a.stderr)
+	fs.SetOutput(sanitizedTextWriter{dst: a.stderr})
 	if cmd.Register != nil {
 		cmd.Register(fs)
 	}
