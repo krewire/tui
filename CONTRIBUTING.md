@@ -23,3 +23,28 @@ go vet ./...
 go test -v ./...
 CGO_ENABLED=0 go build ./...
 ```
+
+
+## Continuous Integration
+
+Pull requests targeting main and pushes to main run the GitHub Actions workflow in .github/workflows/ci.yml. The workflow is read-only, does not use production credentials, and records the commit SHA and selected Go toolchain in the job summary.
+
+The blocking check names are:
+
+- quality / Go quality gates
+- terminal-conformance / terminal behavior
+
+Both checks must pass before a change is considered verified. The Go quality gate runs gofmt validation, go vet, package tests, the race detector, and a CGO_ENABLED=0 build. The terminal conformance check runs the term package tests with a bounded timeout and non-interactive terminal settings. A skipped, cancelled, or missing check is not evidence of success.
+
+For local verification, run:
+
+    test -z "$(gofmt -l .)"
+    go vet ./...
+    go test -count=1 -timeout=3m ./...
+    go test -race -count=1 -timeout=5m ./...
+    CGO_ENABLED=0 go build ./...
+    go test -count=1 -timeout=1m ./term
+
+## Versioning and Releases
+
+The compatibility and release policy is maintained in docs/release-policy.md. TUI remains pre-1.0 until maintainers explicitly approve a stable compatibility contract. Do not publish a stable v1.0.0 tag until the criteria in that policy have been reviewed and met.

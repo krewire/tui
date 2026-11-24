@@ -7,6 +7,7 @@ Welcome to the internal engineering documentation for **`krewire/tui`** (`github
 - [Architecture & Design](architecture.md): Two-package design (`tui` and `term`), leaf invariant, downward dependency rules, and terminal primitives.
 - [Getting Started](getting-started.md): Installation, quickstart examples, command dispatching, flag registration, and formatting.
 - [Contributing Guide](../CONTRIBUTING.md): Quality gates, pure-Go invariant, testing standards, and pull request workflow.
+- [Versioning & Release Policy](release-policy.md): Pre-1.0 API stability, SemVer tags, and stable release criteria.
 
 ## Overview & Core Principles
 

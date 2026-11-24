@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tui-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Go quality gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Record build provenance
+        shell: bash
+        run: |
+          {
+            echo "### Build provenance"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Go toolchain: $(go version)"
+            echo "- Runner: $RUNNER_OS / $RUNNER_ARCH"
+          } >> "$GITHUB_STEP_SUMMARY"
+          go version
+          git rev-parse HEAD
+
+      - name: Check gofmt
+        shell: bash
+        run: |
+          files="$(gofmt -l .)"
+          if [[ -n "$files" ]]; then
+            echo "The following Go files are not formatted:"
+            printf '%s\n' "$files"
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run unit and package tests
+        run: go test -count=1 -timeout=3m ./...
+
+      - name: Run race detector
+        run: go test -race -count=1 -timeout=5m ./...
+
+      - name: Verify pure-Go build
+        run: CGO_ENABLED=0 go build ./...
+
+  terminal-conformance:
+    name: terminal behavior
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Record terminal test provenance
+        shell: bash
+        run: |
+          {
+            echo "### Terminal conformance provenance"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Go toolchain: $(go version)"
+            echo "- Runner: $RUNNER_OS / $RUNNER_ARCH"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run bounded terminal conformance tests
+        env:
+          NO_COLOR: "1"
+          TERM: dumb
+        run: go test -count=1 -timeout=1m ./term
