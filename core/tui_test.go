@@ -3,6 +3,7 @@ package tui
 import (
 	"flag"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/krewire/krewire/errs"
@@ -116,5 +117,132 @@ func TestHiddenCommandCanRunAndIsHiddenFromGeneralHelp(t *testing.T) {
 				t.Errorf("hidden command %q found in groupedCommands", cmd.Name)
 			}
 		}
+	}
+}
+
+func TestCommandDispatch_TableDriven(t *testing.T) {
+	var capturedName string
+	var capturedVerbose bool
+	var capturedCount int
+	var capturedArgs []string
+
+	app := NewApp("testapp", "1.0.0").
+		Command(NewCommand("greet", "greet someone", func(fs *flag.FlagSet) {
+			fs.StringVar(&capturedName, "name", "world", "person to greet")
+			fs.BoolVar(&capturedVerbose, "verbose", false, "verbose output")
+			fs.IntVar(&capturedCount, "count", 1, "repetition count")
+		}, func(fs *flag.FlagSet) errs.ExitCode {
+			capturedArgs = fs.Args()
+			if capturedName == "error" {
+				return errs.ExitCodeFailure
+			}
+			if capturedName == "missing" {
+				return errs.ExitCodeUsage
+			}
+			return errs.ExitCodeSuccess
+		})).
+		WithHint("start", "testapp greet")
+	app.stderr = io.Discard
+
+	cases := []struct {
+		name     string
+		tokens   []string
+		wantExit errs.ExitCode
+		check    func() bool
+	}{
+		{
+			name:     "default flags",
+			tokens:   []string{"greet"},
+			wantExit: errs.ExitCodeSuccess,
+			check: func() bool {
+				return capturedName == "world" && !capturedVerbose && capturedCount == 1
+			},
+		},
+		{
+			name:     "override flags",
+			tokens:   []string{"greet", "--name", "alice", "--verbose", "--count", "3"},
+			wantExit: errs.ExitCodeSuccess,
+			check: func() bool {
+				return capturedName == "alice" && capturedVerbose && capturedCount == 3
+			},
+		},
+		{
+			name:     "flag reordering with positional args",
+			tokens:   []string{"greet", "extra1", "--name", "bob", "extra2"},
+			wantExit: errs.ExitCodeSuccess,
+			check: func() bool {
+				return capturedName == "bob" && len(capturedArgs) == 2 && capturedArgs[0] == "extra1" && capturedArgs[1] == "extra2"
+			},
+		},
+		{
+			name:     "propagates failure exit code",
+			tokens:   []string{"greet", "--name", "error"},
+			wantExit: errs.ExitCodeFailure,
+			check:    func() bool { return true },
+		},
+		{
+			name:     "propagates usage exit code",
+			tokens:   []string{"greet", "--name", "missing"},
+			wantExit: errs.ExitCodeUsage,
+			check:    func() bool { return true },
+		},
+		{
+			name:     "invalid flag returns usage",
+			tokens:   []string{"greet", "--unrecognized"},
+			wantExit: errs.ExitCodeUsage,
+			check:    func() bool { return true },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			capturedName = ""
+			capturedVerbose = false
+			capturedCount = 0
+			capturedArgs = nil
+
+			got := app.Run(tc.tokens)
+			if got != tc.wantExit {
+				t.Errorf("Run(%v) exit = %v, want %v", tc.tokens, got, tc.wantExit)
+			}
+			if !tc.check() {
+				t.Errorf("check failed for %v", tc.tokens)
+			}
+		})
+	}
+}
+
+func TestApp_StreamIsolation(t *testing.T) {
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+
+	app := NewApp("streamapp", "1.0.0").
+		Command(NewCommand("export", "export data", nil, func(fs *flag.FlagSet) errs.ExitCode {
+			stdout.WriteString(`{"status":"ok"}`)
+			return errs.ExitCodeSuccess
+		}))
+	app.stderr = stderr
+
+	// Run command that produces stdout
+	code := app.Run([]string{"export"})
+	if code != errs.ExitCodeSuccess {
+		t.Fatalf("export failed: %v", code)
+	}
+	if stdout.String() != `{"status":"ok"}` {
+		t.Errorf("stdout corrupted: %q", stdout.String())
+	}
+
+	// Trigger help/usage: must write to stderr, not polluting stdout
+	stdout.Reset()
+	stderr.Reset()
+	helpCode := app.Run([]string{"--help"})
+	if helpCode != errs.ExitCodeSuccess {
+		t.Fatalf("help failed: %v", helpCode)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected clean stdout on help, got: %q", stdout.String())
+	}
+	if stderr.Len() == 0 {
+		t.Errorf("expected stderr to contain help content, got empty")
 	}
 }
