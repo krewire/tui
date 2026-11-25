@@ -1,0 +1,66 @@
+name: Nightly
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Krewire TUI Nightly Quality & Regression Matrix
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  GO_VERSION: "1.27.3"
+
+jobs:
+  nightly-quality:
+    name: Nightly Quality (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - core
+          - term
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Provision Core Dependencies
+        run: |
+          if [ ! -d "../krewire" ]; then
+            git clone --depth 1 https://github.com/krewire/krewire.git ../krewire
+          fi
+
+      - name: Static Analysis (go vet)
+        run: |
+          go vet ./${{ matrix.module }}/...
+
+      - name: Unit & Race Tests with Coverage
+        run: |
+          go test -v -race -coverprofile=coverage.out ./${{ matrix.module }}/...
+
+      - name: Pure-Go Compilation
+        run: |
+          CGO_ENABLED=0 go build ./${{ matrix.module }}/...
+
+      - name: Record Nightly Summary
+        if: always()
+        run: |
+          echo "### Nightly Quality: \`${{ matrix.module }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Source Commit**: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Go Toolchain**: \`${{ env.GO_VERSION }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Status**: \`${{ job.status }}\`" >> "$GITHUB_STEP_SUMMARY"
